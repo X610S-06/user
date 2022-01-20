@@ -9,6 +9,7 @@ const passport = require('passport')
 const passportLocalMongoose = require('passport-local-mongoose')
 const GoogleStrategy = require('passport-google-oauth20').Strategy
 const findOrCreate = require('mongoose-findorcreate')
+const nodemailer = require('nodemailer')
 
 const app = express()
 
@@ -19,6 +20,15 @@ app.use(
 		extended: true,
 	})
 )
+
+//mail configuration
+const transporter = nodemailer.createTransport({
+	service: 'gmail',
+	auth: {
+		user: 'somanatha.s.biradar6@gmail.com',
+		pass: '*******',
+	},
+})
 
 //passport
 app.use(
@@ -62,7 +72,7 @@ passport.use(
 	new GoogleStrategy(
 		{
 			clientID: process.env.GOOGLE_CLIENT_ID,
-			clientSecret: process.env.GOOGLE_CLIENT,
+			clientSecret: process.env.GOOGLE_CLIENT_SECRET,
 			callbackURL: 'http://localhost:3000/auth/google/secrets',
 			userProfileURL: 'https://www.googleapis.com/oauth2/v3/userinfo',
 		},
@@ -83,11 +93,10 @@ app.get('/', function (req, res) {
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile'] }))
 
 app.get(
-	'/auth/google/final',
+	'/auth/google/secrets',
 	passport.authenticate('google', { failureRedirect: '/login' }),
 	function (req, res) {
-		// Successful authentication, redirect home.
-		res.redirect('/final')
+		res.redirect('/secrets')
 	}
 )
 
@@ -99,33 +108,8 @@ app.get('/register', function (req, res) {
 	res.render('register')
 })
 
-app.get('/final', function (req, res) {
-	res.render('final')
-})
-
-app.get('/submit', function (req, res) {
-	if (req.isAuthenticated()) {
-		res.render('submit')
-	} else {
-		res.redirect('/login')
-	}
-})
-
-app.post('/submit', function (req, res) {
-	const submittedSecret = req.body.secret
-
-	User.findById(req.user.id, function (err, foundUser) {
-		if (err) {
-			console.log(err)
-		} else {
-			if (foundUser) {
-				foundUser.secret = submittedSecret
-				foundUser.save(function () {
-					res.redirect('/final')
-				})
-			}
-		}
-	})
+app.get('/secrets', function (req, res) {
+	res.render('secrets')
 })
 
 app.get('/logout', function (req, res) {
@@ -133,19 +117,37 @@ app.get('/logout', function (req, res) {
 	res.redirect('/')
 })
 
+//register route
 app.post('/register', function (req, res) {
 	User.register({ username: req.body.username }, req.body.password, function (err, user) {
 		if (err) {
-			console.log(err)
+			console.log('User already Exists')
 			res.redirect('/register')
 		} else {
 			passport.authenticate('local')(req, res, function () {
-				res.redirect('/final')
+				const email = req.body.username
+
+				var mailOptions = {
+					from: 'somanatha.s.biradar6@gmail.com',
+					to: email,
+					subject: 'Sending Email using Node.js',
+					text: 'That was easy!',
+				}
+
+				transporter.sendMail(mailOptions, function (error, info) {
+					if (error) {
+						console.log(error)
+					} else {
+						console.log('Email sent: ' + info.response)
+					}
+				})
+				res.redirect('/secrets')
 			})
 		}
 	})
 })
 
+//login route
 app.post('/login', function (req, res) {
 	const user = new User({
 		username: req.body.username,
@@ -154,16 +156,17 @@ app.post('/login', function (req, res) {
 
 	req.login(user, function (err) {
 		if (err) {
-			console.log(err)
+			console.log('User already Exists')
 			res.redirect('/register')
 		} else {
 			passport.authenticate('local')(req, res, function () {
-				res.redirect('/final')
+				res.redirect('/secrets')
 			})
 		}
 	})
 })
 
+//listening on local port
 app.listen(3000, function () {
 	console.log('Server started on port 3000.')
 })
